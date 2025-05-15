@@ -123,8 +123,8 @@ class BOLScraper:
             tuple: (匯率字典, 日期) 或 (None, None)
         """
         try:
-            with open('bol_raw.html', 'w', encoding='utf-8') as f:
-                f.write(html_content)
+            # with open('bol_raw.html', 'w', encoding='utf-8') as f:
+            #     f.write(html_content)
             
             soup = BeautifulSoup(html_content, 'html.parser')
             table = soup.find('table')
