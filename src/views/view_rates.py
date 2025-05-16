@@ -1,4 +1,4 @@
-from db_manager import ExchangeRateDB
+from src.database.db_manager import ExchangeRateDB
 import argparse
 from datetime import datetime
 import logging

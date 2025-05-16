@@ -106,19 +106,57 @@ def main():
         if bcel_rates or bol_rates:
             print("\n匯率比較：")
             print("----------------------------------------")
-            print(f"{'貨幣':<6} {'BOL匯率':>12} {'BCEL匯率':>12} {'差異':>12} {'差異%':>8}")
+            print(f"{'貨幣':<12} {'BOL匯率':<12} {'BCEL匯率':<12} {'差異':<12} {'差異%':<8}")
             print("----------------------------------------")
             
-            # 以BCEL幣別為主組合比較表，只比對BOL買入價
-            for currency, bcel_rate in bcel_rates.items():
-                bol_rate = bol_rates.get(f"{currency}_buy") if bol_rates else None
-                diff = bcel_rate - bol_rate if bol_rate is not None else None
-                diff_percent = (diff / bol_rate * 100) if bol_rate not in (None, 0) else None
-                print(f"{currency:<6} "
-                      f"{format_rate(bol_rate):>12} "
-                      f"{format_rate(bcel_rate):>12} "
-                      f"{format_difference(diff):>12} "
-                      f"{format_percentage(diff_percent):>8}")
+            # 獲取所有貨幣代碼
+            currencies = set()
+            for bank_rates in [bcel_rates, bol_rates]:
+                if bank_rates:
+                    for key in bank_rates.keys():
+                        currency = key.split('_')[0]  # 例如 'USD_buy' -> 'USD'
+                        currencies.add(currency)
+            
+            # 按貨幣代碼排序
+            for currency in sorted(currencies):
+                # 比較買入價格
+                bol_buy = bol_rates.get(f"{currency}_buy") if bol_rates else None
+                bcel_buy = bcel_rates.get(f"{currency}_buy") if bcel_rates else None
+                
+                # 顯示買入價格比較
+                bol_buy_str = f"{bol_buy:,.2f}" if bol_buy is not None else "N/A"
+                bcel_buy_str = f"{bcel_buy:,.2f}" if bcel_buy is not None else "N/A"
+                
+                if bol_buy is not None and bcel_buy is not None:
+                    diff = bcel_buy - bol_buy
+                    diff_percent = (diff / bol_buy) * 100 if bol_buy != 0 else 0
+                    diff_str = f"{diff:,.2f}"
+                    diff_percent_str = f"{diff_percent:.2f}%"
+                else:
+                    diff_str = "N/A"
+                    diff_percent_str = "N/A"
+                    
+                print(f"{currency}_buy {bol_buy_str:>12} {bcel_buy_str:>12} {diff_str:>12} {diff_percent_str:>8}")
+                
+                # 比較賣出價格
+                bol_sell = bol_rates.get(f"{currency}_sell") if bol_rates else None
+                bcel_sell = bcel_rates.get(f"{currency}_sell") if bcel_rates else None
+                
+                # 顯示賣出價格比較
+                bol_sell_str = f"{bol_sell:,.2f}" if bol_sell is not None else "N/A"
+                bcel_sell_str = f"{bcel_sell:,.2f}" if bcel_sell is not None else "N/A"
+                
+                if bol_sell is not None and bcel_sell is not None:
+                    diff = bcel_sell - bol_sell
+                    diff_percent = (diff / bol_sell) * 100 if bol_sell != 0 else 0
+                    diff_str = f"{diff:,.2f}"
+                    diff_percent_str = f"{diff_percent:.2f}%"
+                else:
+                    diff_str = "N/A"
+                    diff_percent_str = "N/A"
+                    
+                print(f"{currency}_sell {bol_sell_str:>12} {bcel_sell_str:>12} {diff_str:>12} {diff_percent_str:>8}")
+            
             print("----------------------------------------")
             
             # 顯示日期信息
@@ -130,9 +168,10 @@ def main():
                 print(f"BOL 數據日期: {bol_date.strftime('%Y-%m-%d')}")
         else:
             print("無法獲取任何匯率數據")
-        
+            
     except Exception as e:
-        logger.error(f"程式執行時發生錯誤: {str(e)}")
+        logging.error(f"程式執行時發生錯誤: {str(e)}")
+        raise
 
 def format_rate(rate: float) -> str:
     """格式化匯率顯示"""
