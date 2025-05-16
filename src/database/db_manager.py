@@ -5,143 +5,116 @@ from typing import Dict, List, Optional, Tuple
 import os
 
 class ExchangeRateDB:
-    def __init__(self, db_path: str = "exchange_rates.db"):
+    def __init__(self):
         """初始化資料庫連接"""
-        self.db_path = db_path
-        self.conn = None
-        self.cursor = None
-        self.logger = logging.getLogger(__name__)
-        
-        # 檢查資料庫是否存在
-        db_exists = os.path.exists(self.db_path)
-        
-        self._connect()
-        
-        # 只在資料庫不存在時初始化
-        if not db_exists:
-            self._init_db()
-
-    def _connect(self):
-        """建立資料庫連接"""
         try:
-            self.conn = sqlite3.connect(self.db_path)
+            self.conn = sqlite3.connect('exchange_rates.db')
             self.cursor = self.conn.cursor()
-            self.logger.info("數據庫連接成功")
+            self._create_tables()
+            logging.info("數據庫連接成功")
         except Exception as e:
-            self.logger.error(f"數據庫連接失敗: {str(e)}")
+            logging.error(f"數據庫連接失敗: {str(e)}")
             raise
 
-    def _init_db(self):
-        """初始化資料庫表結構"""
+    def _create_tables(self):
+        """Create necessary tables"""
         try:
-            # 創建匯率表
+            # Create table if not exists
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS exchange_rates (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     currency TEXT NOT NULL,
                     rate REAL NOT NULL,
+                    rate_type TEXT NOT NULL,
+                    date TEXT NOT NULL,
                     bank TEXT NOT NULL,
-                    date DATE NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(currency, bank, date)
+                    UNIQUE(currency, rate_type, date, bank)
                 )
             ''')
             
-            # 創建索引
-            self.cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_currency_bank_date 
-                ON exchange_rates(currency, bank, date)
-            ''')
+            # Create indexes
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_currency ON exchange_rates(currency)')
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_date ON exchange_rates(date)')
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_bank ON exchange_rates(bank)')
+            self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_rate_type ON exchange_rates(rate_type)')
             
             self.conn.commit()
-            self.logger.info("數據庫初始化成功")
+            logging.info("Database tables created successfully")
         except Exception as e:
-            self.logger.error(f"數據庫初始化失敗: {str(e)}")
+            logging.error(f"Failed to create tables: {str(e)}")
             raise
 
-    def save_rate(self, currency: str, rate: float, date: datetime, bank: str):
-        """
-        保存匯率數據
-        
-        Args:
-            currency (str): 貨幣代碼
-            rate (float): 匯率
-            date (datetime): 日期
-            bank (str): 銀行名稱 ('BOL' 或 'BCEL')
-        """
+    def save_rate(self, currency: str, rate: float, rate_type: str, date: datetime, bank: str):
+        """保存匯率數據"""
         try:
+            date_str = date.strftime('%Y-%m-%d')
             self.cursor.execute('''
-                INSERT OR REPLACE INTO exchange_rates (currency, rate, bank, date)
-                VALUES (?, ?, ?, ?)
-            ''', (currency, rate, bank, date.strftime('%Y-%m-%d')))
+                INSERT OR REPLACE INTO exchange_rates 
+                (currency, rate, rate_type, date, bank)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (currency, rate, rate_type, date_str, bank))
             self.conn.commit()
-            self.logger.info(f"成功保存匯率數據: {currency} {rate} {date} {bank}")
+            logging.info(f"成功保存 {bank} {currency} {rate_type} 匯率: {rate}")
         except Exception as e:
-            self.logger.error(f"保存匯率數據失敗: {str(e)}")
+            logging.error(f"保存匯率數據失敗: {str(e)}")
             raise
 
-    def get_rates_by_date(self, date: datetime) -> Dict[str, Dict[str, float]]:
-        """
-        獲取指定日期的所有匯率
-        
-        Args:
-            date (datetime): 查詢日期
-            
-        Returns:
-            Dict[str, Dict[str, float]]: 格式為 {currency: {bank: rate}}
-        """
+    def get_rates_by_date(self, date: datetime) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """獲取指定日期的匯率"""
         try:
+            date_str = date.strftime('%Y-%m-%d')
             self.cursor.execute('''
-                SELECT currency, bank, rate
+                SELECT currency, rate, rate_type, bank
                 FROM exchange_rates
                 WHERE date = ?
-            ''', (date.strftime('%Y-%m-%d'),))
+            ''', (date_str,))
             
-            results = self.cursor.fetchall()
             rates = {}
-            
-            for currency, bank, rate in results:
-                if currency not in rates:
-                    rates[currency] = {}
-                rates[currency][bank] = rate
+            for row in self.cursor.fetchall():
+                currency, rate, rate_type, bank = row
+                if bank not in rates:
+                    rates[bank] = {}
+                if currency not in rates[bank]:
+                    rates[bank][currency] = {}
+                rates[bank][currency][rate_type] = rate
                 
             return rates
         except Exception as e:
-            self.logger.error(f"獲取匯率數據失敗: {str(e)}")
+            logging.error(f"獲取匯率數據失敗: {str(e)}")
             return {}
 
-    def get_rate_comparison(self, date: datetime) -> List[Dict]:
-        """
-        獲取指定日期的匯率比較
-        
-        Args:
-            date (datetime): 查詢日期
+    def get_rate_comparison(self, date: datetime) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """獲取指定日期的匯率比較"""
+        try:
+            date_str = date.strftime('%Y-%m-%d')
+            self.cursor.execute('''
+                SELECT currency, rate, rate_type, bank
+                FROM exchange_rates
+                WHERE date = ?
+                ORDER BY bank, currency, rate_type
+            ''', (date_str,))
             
-        Returns:
-            List[Dict]: 包含匯率比較資訊的列表
-        """
-        rates = self.get_rates_by_date(date)
-        comparison = []
-        
-        for currency, bank_rates in rates.items():
-            if 'BOL' in bank_rates and 'BCEL' in bank_rates:
-                bol_rate = bank_rates['BOL']
-                bcel_rate = bank_rates['BCEL']
-                diff = bcel_rate - bol_rate
-                diff_percent = (diff / bol_rate) * 100 if bol_rate != 0 else 0
+            comparison = {}
+            for row in self.cursor.fetchall():
+                currency, rate, rate_type, bank = row
+                if currency not in comparison:
+                    comparison[currency] = {}
+                if rate_type not in comparison[currency]:
+                    comparison[currency][rate_type] = {}
+                comparison[currency][rate_type][bank] = rate
                 
-                comparison.append({
-                    'currency': currency,
-                    'bol_rate': bol_rate,
-                    'bcel_rate': bcel_rate,
-                    'difference': diff,
-                    'difference_percent': diff_percent
-                })
-                
-        return comparison
+            return comparison
+        except Exception as e:
+            logging.error(f"獲取匯率比較失敗: {str(e)}")
+            return {}
 
     def close(self):
         """關閉資料庫連接"""
-        if self.conn:
-            self.conn.close()
-            self.logger.info("數據庫連接已關閉") 
+        try:
+            if hasattr(self, 'conn'):
+                self.conn.close()
+                logging.info("數據庫連接已關閉")
+        except Exception as e:
+            logging.error(f"關閉數據庫連接失敗: {str(e)}")
+            raise 

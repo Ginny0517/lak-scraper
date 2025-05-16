@@ -2,8 +2,7 @@ import logging
 from datetime import datetime
 from src.scrapers.bcel_scraper import BCELScraper
 from src.scrapers.bol_scraper import BOLScraper
-from src.views import view_rates
-import sqlite3
+from src.database.db_manager import ExchangeRateDB
 import argparse
 
 # 設置日誌
@@ -20,28 +19,13 @@ def parse_date(date_str):
     except ValueError:
         raise argparse.ArgumentTypeError(f"無效的日期格式: {date_str}。請使用 YYYY-MM-DD 格式")
 
-def init_database():
-    """初始化資料庫"""
-    conn = sqlite3.connect('exchange_rates.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS exchange_rates (
-            date TEXT,
-            bank TEXT,
-            currency TEXT,
-            rate REAL,
-            PRIMARY KEY (date, bank, currency)
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
 def fetch_and_save_rates(query_date=None):
     """獲取並保存匯率"""
     try:
-        # 初始化爬蟲
+        # 初始化爬蟲和資料庫
         bcel_scraper = BCELScraper()
         bol_scraper = BOLScraper()
+        db = ExchangeRateDB()
         
         # 使用指定日期或當前日期
         current_date = query_date if query_date else datetime.now()
@@ -52,15 +36,15 @@ def fetch_and_save_rates(query_date=None):
             logger.info(f"成功獲取BCEL匯率: {bcel_rates}")
             
             # 保存到資料庫
-            conn = sqlite3.connect('exchange_rates.db')
-            c = conn.cursor()
-            for currency, rate in bcel_rates.items():
-                c.execute('''
-                    INSERT OR REPLACE INTO exchange_rates (date, bank, currency, rate)
-                    VALUES (?, ?, ?, ?)
-                ''', (bcel_date.strftime('%Y-%m-%d'), 'BCEL', currency, rate))
-            conn.commit()
-            conn.close()
+            for key, rate in bcel_rates.items():
+                # 解析貨幣代碼和匯率類型
+                parts = key.split('_')
+                if len(parts) == 2:
+                    currency, rate_type = parts
+                    db.save_rate(currency, rate, rate_type, bcel_date, 'BCEL')
+                else:
+                    # 如果沒有匯率類型，假設是買入價
+                    db.save_rate(key, rate, 'buy', bcel_date, 'BCEL')
         else:
             logger.warning("無法獲取BCEL匯率")
         
@@ -70,15 +54,15 @@ def fetch_and_save_rates(query_date=None):
             logger.info(f"成功獲取BOL匯率: {bol_rates}")
             
             # 保存到資料庫
-            conn = sqlite3.connect('exchange_rates.db')
-            c = conn.cursor()
-            for currency, rate in bol_rates.items():
-                c.execute('''
-                    INSERT OR REPLACE INTO exchange_rates (date, bank, currency, rate)
-                    VALUES (?, ?, ?, ?)
-                ''', (bol_date.strftime('%Y-%m-%d'), 'BOL', currency, rate))
-            conn.commit()
-            conn.close()
+            for key, rate in bol_rates.items():
+                # 解析貨幣代碼和匯率類型
+                parts = key.split('_')
+                if len(parts) == 2:
+                    currency, rate_type = parts
+                    db.save_rate(currency, rate, rate_type, bol_date, 'BOL')
+                else:
+                    # 如果沒有匯率類型，假設是買入價
+                    db.save_rate(key, rate, 'buy', bol_date, 'BOL')
         else:
             logger.warning("無法獲取BOL匯率")
             
@@ -87,6 +71,9 @@ def fetch_and_save_rates(query_date=None):
     except Exception as e:
         logger.error(f"獲取匯率時發生錯誤: {str(e)}")
         return None, None, None, None
+    finally:
+        if 'db' in locals():
+            db.close()
 
 def main():
     """主程式入口"""
@@ -95,9 +82,6 @@ def main():
         parser = argparse.ArgumentParser(description='獲取並比較銀行匯率')
         parser.add_argument('--date', type=parse_date, help='指定查詢日期 (格式: YYYY-MM-DD)')
         args = parser.parse_args()
-        
-        # 初始化資料庫
-        init_database()
         
         # 獲取並保存匯率
         bcel_rates, bcel_date, bol_rates, bol_date = fetch_and_save_rates(args.date)
