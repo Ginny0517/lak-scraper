@@ -7,6 +7,7 @@ import time
 from typing import Optional, Dict
 import urllib3
 from urllib3.exceptions import InsecureRequestWarning
+from requests.auth import HTTPBasicAuth
 
 # 禁用SSL警告
 urllib3.disable_warnings(InsecureRequestWarning)
@@ -148,7 +149,7 @@ class BCELScraper:
             note_td = row.find('td', attrs={'data-title': 'NOTE'})
             sell_td = row.find('td', attrs={'data-title': 'Sell Rates'})
             
-            if not currency_td or not note_td:
+            if not currency_td:
                 continue
                 
             # 提取貨幣信息
@@ -172,14 +173,20 @@ class BCELScraper:
             # 提取買入和賣出價格
             try:
                 # 使用現鈔買入價（NOTE）作為買入價
-                buy_rate = self._extract_rate_from_text(note_td.text.strip(), currency)
+                buy_rate = self._extract_rate_from_text(note_td.text.strip(), currency) if note_td else None
                 # 使用賣出價（Sell Rates）
-                sell_rate = self._extract_rate_from_text(sell_td.text.strip(), currency) if sell_td else buy_rate
+                sell_rate = self._extract_rate_from_text(sell_td.text.strip(), currency) if sell_td else None
                 
-                if buy_rate is not None:
-                    rates[f"{currency}_buy"] = buy_rate
-                    rates[f"{currency}_sell"] = sell_rate if sell_rate is not None else buy_rate
+                # 特殊處理 HKD 和 VND
+                if currency in ['HKD', 'VND']:
+                    if sell_rate is not None:
+                        rates[f"{currency}_sell"] = sell_rate
+                else:
+                    if buy_rate is not None:
+                        rates[f"{currency}_buy"] = buy_rate
+                        rates[f"{currency}_sell"] = sell_rate if sell_rate is not None else buy_rate
                     
+                if buy_rate is not None or sell_rate is not None:
                     self.logger.info(f"成功解析 {currency} 匯率 - 買入(現鈔): {buy_rate}, 賣出: {sell_rate}")
             except (ValueError, IndexError) as e:
                 self.logger.warning(f"解析 {currency} 匯率時發生錯誤: {str(e)}")
@@ -238,15 +245,14 @@ class BCELScraper:
         """
         try:
             self._wait_for_next_request()
-            
-            # 如果提供了日期，檢查是否為假日
-            if date:
-                if self._is_holiday(date):
-                    self.logger.info(f"BCEL: {date.strftime('%Y-%m-%d')} 是假日，嘗試獲取前一個工作日的匯率")
-                    date = self._get_previous_business_day(date)
-                    self.logger.info(f"BCEL: 使用前一個工作日 {date.strftime('%Y-%m-%d')}")
-            
-            # 更新請求頭
+            # 如果沒有提供日期，使用當前日期
+            if date is None:
+                date = datetime.now()
+                
+            if self._is_holiday(date):
+                self.logger.info(f"BCEL: {date.strftime('%Y-%m-%d')} 是假日，嘗試獲取前一個工作日的匯率")
+                date = self._get_previous_business_day(date)
+                self.logger.info(f"BCEL: 使用前一個工作日 {date.strftime('%Y-%m-%d')}")
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                 'Accept': 'application/json, text/javascript, */*; q=0.01',
@@ -258,29 +264,19 @@ class BCELScraper:
                 'Connection': 'keep-alive'
             }
             self.session.headers.update(headers)
-            
-            # 構建 POST 請求的 URL 和參數
             url = "https://www.bcel.com.la/bcel/detail-exchange-rate"
             params = {
                 'exDate': date.strftime('%Y-%m-%d') if date else datetime.now().strftime('%Y-%m-%d'),
                 'round': '1',
                 'lang': 'en'
             }
-            
             self.logger.info(f"BCEL: 請求 URL: {url}, 參數: {params}")
-            
-            # 發送 POST 請求
             response = self.session.post(url, data=params, timeout=self.timeout)
             response.raise_for_status()
-            
-            # 檢查響應內容
             if not response.text:
                 self.logger.error("BCEL: 收到空響應")
                 return None, None
-                
-            self.logger.debug(f"BCEL: 響應內容: {response.text[:500]}...")  # 只記錄前500個字符
-            
-            # 檢查響應是否為 JSON
+            self.logger.debug(f"BCEL: 響應內容: {response.text[:500]}...")
             try:
                 json_response = response.json()
                 if json_response and 'html' in json_response:
@@ -289,35 +285,27 @@ class BCELScraper:
                     soup = BeautifulSoup(response.text, 'html.parser')
             except ValueError:
                 soup = BeautifulSoup(response.text, 'html.parser')
-            
-            rates = self._parse_rate_table(soup, date)
-            
-            if rates:
-                # 檢查返回的日期是否與查詢日期相符
-                if date and date.date() != datetime.now().date():
-                    self.logger.warning(f"BCEL: 返回的日期 ({datetime.now().date()}) 與查詢日期 ({date.date()}) 不符")
-                    # 如果查詢日期是未來日期，嘗試獲取前一天的匯率
-                    if date.date() > datetime.now().date():
-                        self.logger.info(f"BCEL: 嘗試獲取前一天的匯率")
-                        return self.fetch_bcel_rate(currency, date - timedelta(days=1))
-                    # 如果是歷史日期，直接返回當前獲取的匯率
-                    return rates, date
-                
-                if currency:
-                    return {currency: rates.get(currency)}, date
-                return rates, date
-            
-            # 如果沒有找到數據，嘗試前一天的匯率
-            if date:
-                self.logger.info(f"BCEL: 無法找到 {date.strftime('%Y-%m-%d')} 的匯率數據，嘗試獲取前一天的匯率")
-                previous_day = date - timedelta(days=1)
-                return self.fetch_bcel_rate(currency, previous_day)
-                
-            return None, None
-            
+            flat_rates = self._parse_rate_table(soup, date)
+            # 統一格式
+            rates = {'date': date.strftime('%Y-%m-%d'), 'rates': {}}
+            for k, v in flat_rates.items():
+                if k.endswith('_buy'):
+                    code = k[:-4]
+                    if code not in rates['rates']:
+                        rates['rates'][code] = {}
+                    rates['rates'][code]['buy'] = v
+                elif k.endswith('_sell'):
+                    code = k[:-5]
+                    if code not in rates['rates']:
+                        rates['rates'][code] = {}
+                    rates['rates'][code]['sell'] = v
+            self.logger.info(f"BCEL: 統一格式匯率: {rates}")
+            return rates, date
         except requests.exceptions.RequestException as e:
             self.logger.error(f"BCEL: 請求失敗: {str(e)}")
             return None, None
         except Exception as e:
             self.logger.error(f"BCEL: 發生未預期的錯誤: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return None, None 

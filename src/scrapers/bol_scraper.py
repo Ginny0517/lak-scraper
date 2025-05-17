@@ -223,43 +223,43 @@ class BOLScraper:
         Args:
             currency (str, optional): 貨幣代碼，如果為None則返回所有貨幣的匯率
             date (datetime, optional): 指定查詢日期
-            
         Returns:
-            tuple: (匯率字典或單個匯率, 日期) 或 (None, None)
+            tuple: (匯率字典, 日期) 或 (None, None)
         """
         try:
             self._wait_for_next_request()
-            
-            # 如果指定了日期，檢查是否為營業日
             if date:
-                # 如果是週末，直接獲取上一個營業日
-                if date.weekday() >= 5:  # 5是週六，6是週日
+                if date.weekday() >= 5:
                     date = self._get_previous_business_day(date)
                     self.logger.info(f"查詢日期為非營業日，使用上一個營業日: {date.strftime('%Y-%m-%d')}")
-            
-            # 構建URL參數
             params = {}
             if date:
-                params['date'] = date.strftime('%d-%m-%Y')  # BOL查詢格式為日-月-年
-            
-            # 改用POST請求取得匯率資料
+                params['date'] = date.strftime('%d-%m-%Y')
             response = self.session.post(self.base_url, data=params, timeout=self.timeout)
             response.raise_for_status()
-            
-            # 解析匯率表格
-            rates, parsed_date = self._parse_rate_table(response.text, date)
-            
-            # 如果指定了日期但沒有找到數據，直接回傳None，不再自動回退
-            if date and not rates:
-                self.logger.info(f"無法找到 {date.strftime('%Y-%m-%d')} 的匯率數據，不再自動回退")
+            flat_rates, parsed_date = self._parse_rate_table(response.text, date)
+            if not flat_rates:
+                self.logger.error("BOL: 沒有解析到任何匯率數據")
                 return None, None
-            
-            # 如果指定了特定貨幣，只返回該貨幣的匯率
-            if currency and rates:
-                return rates.get(currency), parsed_date
-                
+            rates = {'date': parsed_date.strftime('%Y-%m-%d'), 'rates': {}}
+            for k, v in flat_rates.items():
+                if k.endswith('_buy'):
+                    code = k[:-4]
+                    if code not in rates['rates']:
+                        rates['rates'][code] = {}
+                    rates['rates'][code]['buy'] = v
+                elif k.endswith('_sell'):
+                    code = k[:-5]
+                    if code not in rates['rates']:
+                        rates['rates'][code] = {}
+                    rates['rates'][code]['sell'] = v
+            self.logger.info(f"BOL: 統一格式匯率: {rates}")
             return rates, parsed_date
-            
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"BOL: 請求失敗: {str(e)}")
+            return None, None
         except Exception as e:
-            self.logger.error(f"獲取匯率時發生錯誤: {str(e)}")
+            self.logger.error(f"BOL: 發生未預期的錯誤: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return None, None 

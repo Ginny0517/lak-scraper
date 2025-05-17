@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from src.scrapers.bcel_scraper import BCELScraper
 from src.scrapers.bol_scraper import BOLScraper
+from src.scrapers.ldb_scraper import LDBScraper
 from src.database.db_manager import ExchangeRateDB
 import argparse
 
@@ -11,6 +12,29 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# 貨幣列表
+CURRENCY_LIST = [
+    'USD', 'THB', 'EUR', 'GBP', 'AUD', 'CAD', 'JPY', 'CHF', 'CNY', 'SGD', 'KRW', 'HKD', 'MYR', 'VND'
+]
+
+# LDB 貨幣對應表
+LDB_CURRENCY_MAP = {
+    'USD': 'USD CASH 50-100',  # 使用 USD CASH 50-100 的數據
+    'THB': 'THB CASH',         # 使用 THB CASH 的數據
+    'EUR': 'EUR',
+    'GBP': 'GBP',
+    'AUD': 'AUD',
+    'CAD': 'CAD',
+    'JPY': 'JPY',
+    'CHF': 'CHF',
+    'CNY': 'CNY',
+    'SGD': 'SGD',
+    'KRW': 'KRW',
+    'HKD': 'HKD',
+    'MYR': 'MYR',
+    'VND': 'VND',
+}
 
 def parse_date(date_str):
     """解析日期字串"""
@@ -25,6 +49,7 @@ def fetch_and_save_rates(query_date=None):
         # 初始化爬蟲和資料庫
         bcel_scraper = BCELScraper()
         bol_scraper = BOLScraper()
+        ldb_scraper = LDBScraper()
         db = ExchangeRateDB()
         
         # 使用指定日期或當前日期
@@ -36,15 +61,11 @@ def fetch_and_save_rates(query_date=None):
             logger.info(f"成功獲取BCEL匯率: {bcel_rates}")
             
             # 保存到資料庫
-            for key, rate in bcel_rates.items():
-                # 解析貨幣代碼和匯率類型
-                parts = key.split('_')
-                if len(parts) == 2:
-                    currency, rate_type = parts
-                    db.save_rate(currency, rate, rate_type, bcel_date, 'BCEL')
-                else:
-                    # 如果沒有匯率類型，假設是買入價
-                    db.save_rate(key, rate, 'buy', bcel_date, 'BCEL')
+            for currency, rates in bcel_rates['rates'].items():
+                if 'buy' in rates:
+                    db.save_rate(currency, rates['buy'], 'buy', bcel_date, 'BCEL')
+                if 'sell' in rates:
+                    db.save_rate(currency, rates['sell'], 'sell', bcel_date, 'BCEL')
         else:
             logger.warning("無法獲取BCEL匯率")
         
@@ -54,108 +75,36 @@ def fetch_and_save_rates(query_date=None):
             logger.info(f"成功獲取BOL匯率: {bol_rates}")
             
             # 保存到資料庫
-            for key, rate in bol_rates.items():
-                # 解析貨幣代碼和匯率類型
-                parts = key.split('_')
-                if len(parts) == 2:
-                    currency, rate_type = parts
-                    db.save_rate(currency, rate, rate_type, bol_date, 'BOL')
-                else:
-                    # 如果沒有匯率類型，假設是買入價
-                    db.save_rate(key, rate, 'buy', bol_date, 'BOL')
+            for currency, rates in bol_rates['rates'].items():
+                if 'buy' in rates:
+                    db.save_rate(currency, rates['buy'], 'buy', bol_date, 'BOL')
+                if 'sell' in rates:
+                    db.save_rate(currency, rates['sell'], 'sell', bol_date, 'BOL')
         else:
             logger.warning("無法獲取BOL匯率")
             
-        return bcel_rates, bcel_date, bol_rates, bol_date
+        # 獲取LDB匯率
+        ldb_rates, ldb_date = ldb_scraper.fetch_ldb_rate(date=current_date)
+        if ldb_rates and ldb_date:
+            logger.info(f"成功獲取LDB匯率: {ldb_rates}")
+            
+            # 保存到資料庫
+            for currency, rates in ldb_rates['rates'].items():
+                if 'buy' in rates:
+                    db.save_rate(currency, rates['buy'], 'buy', ldb_date, 'LDB')
+                if 'sell' in rates:
+                    db.save_rate(currency, rates['sell'], 'sell', ldb_date, 'LDB')
+        else:
+            logger.warning("無法獲取LDB匯率")
+            
+        return bcel_rates, bcel_date, bol_rates, bol_date, ldb_rates, ldb_date
             
     except Exception as e:
         logger.error(f"獲取匯率時發生錯誤: {str(e)}")
-        return None, None, None, None
+        return None, None, None, None, None, None
     finally:
         if 'db' in locals():
             db.close()
-
-def main():
-    """主程式入口"""
-    try:
-        # 解析命令行參數
-        parser = argparse.ArgumentParser(description='獲取並比較銀行匯率')
-        parser.add_argument('--date', type=parse_date, help='指定查詢日期 (格式: YYYY-MM-DD)')
-        args = parser.parse_args()
-        
-        # 獲取並保存匯率
-        bcel_rates, bcel_date, bol_rates, bol_date = fetch_and_save_rates(args.date)
-        
-        # 顯示匯率比較
-        if bcel_rates or bol_rates:
-            print("\n匯率比較：")
-            print("----------------------------------------")
-            print(f"{'貨幣':<12} {'BOL匯率':<12} {'BCEL匯率':<12} {'差異':<12} {'差異%':<8}")
-            print("----------------------------------------")
-            
-            # 獲取所有貨幣代碼
-            currencies = set()
-            for bank_rates in [bcel_rates, bol_rates]:
-                if bank_rates:
-                    for key in bank_rates.keys():
-                        currency = key.split('_')[0]  # 例如 'USD_buy' -> 'USD'
-                        currencies.add(currency)
-            
-            # 按貨幣代碼排序
-            for currency in sorted(currencies):
-                # 比較買入價格
-                bol_buy = bol_rates.get(f"{currency}_buy") if bol_rates else None
-                bcel_buy = bcel_rates.get(f"{currency}_buy") if bcel_rates else None
-                
-                # 顯示買入價格比較
-                bol_buy_str = f"{bol_buy:,.2f}" if bol_buy is not None else "N/A"
-                bcel_buy_str = f"{bcel_buy:,.2f}" if bcel_buy is not None else "N/A"
-                
-                if bol_buy is not None and bcel_buy is not None:
-                    diff = bcel_buy - bol_buy
-                    diff_percent = (diff / bol_buy) * 100 if bol_buy != 0 else 0
-                    diff_str = f"{diff:,.2f}"
-                    diff_percent_str = f"{diff_percent:.2f}%"
-                else:
-                    diff_str = "N/A"
-                    diff_percent_str = "N/A"
-                    
-                print(f"{currency}_buy {bol_buy_str:>12} {bcel_buy_str:>12} {diff_str:>12} {diff_percent_str:>8}")
-                
-                # 比較賣出價格
-                bol_sell = bol_rates.get(f"{currency}_sell") if bol_rates else None
-                bcel_sell = bcel_rates.get(f"{currency}_sell") if bcel_rates else None
-                
-                # 顯示賣出價格比較
-                bol_sell_str = f"{bol_sell:,.2f}" if bol_sell is not None else "N/A"
-                bcel_sell_str = f"{bcel_sell:,.2f}" if bcel_sell is not None else "N/A"
-                
-                if bol_sell is not None and bcel_sell is not None:
-                    diff = bcel_sell - bol_sell
-                    diff_percent = (diff / bol_sell) * 100 if bol_sell != 0 else 0
-                    diff_str = f"{diff:,.2f}"
-                    diff_percent_str = f"{diff_percent:.2f}%"
-                else:
-                    diff_str = "N/A"
-                    diff_percent_str = "N/A"
-                    
-                print(f"{currency}_sell {bol_sell_str:>12} {bcel_sell_str:>12} {diff_str:>12} {diff_percent_str:>8}")
-            
-            print("----------------------------------------")
-            
-            # 顯示日期信息
-            if args.date:
-                print(f"查詢日期: {args.date.strftime('%Y-%m-%d')}")
-            if bcel_date:
-                print(f"BCEL 數據日期: {bcel_date.strftime('%Y-%m-%d')}")
-            if bol_date:
-                print(f"BOL 數據日期: {bol_date.strftime('%Y-%m-%d')}")
-        else:
-            print("無法獲取任何匯率數據")
-            
-    except Exception as e:
-        logging.error(f"程式執行時發生錯誤: {str(e)}")
-        raise
 
 def format_rate(rate: float) -> str:
     """格式化匯率顯示"""
@@ -174,6 +123,62 @@ def format_percentage(percent: float) -> str:
     if percent is None:
         return "N/A"
     return f"{percent:+.2f}%"
+
+def main():
+    """主程式入口"""
+    try:
+        # 解析命令行參數
+        parser = argparse.ArgumentParser(description='獲取並比較銀行匯率')
+        parser.add_argument('--date', type=parse_date, help='指定查詢日期 (格式: YYYY-MM-DD)')
+        args = parser.parse_args()
+        
+        # 獲取並保存匯率
+        bcel_rates, bcel_date, bol_rates, bol_date, ldb_rates, ldb_date = fetch_and_save_rates(args.date)
+        
+        # 顯示匯率比較
+        if bcel_rates or bol_rates or ldb_rates:
+            print("\n匯率比較：")
+            print("-" * 100)
+            print(f"{'貨幣':<8} {'BOL買入':>12} {'BOL賣出':>12} {'BCEL買入':>12} {'BCEL賣出':>12} {'LDB買入':>12} {'LDB賣出':>12}")
+            print("-" * 100)
+            
+            for currency in CURRENCY_LIST:
+                # 獲取各銀行的匯率
+                bol_buy = bol_rates['rates'].get(currency, {}).get('buy', 'N/A') if bol_rates else 'N/A'
+                bol_sell = bol_rates['rates'].get(currency, {}).get('sell', 'N/A') if bol_rates else 'N/A'
+                
+                # BCEL 特殊處理：HKD 和 VND 可能只有賣價
+                if currency in ['HKD', 'VND']:
+                    bcel_buy = 'N/A'
+                    bcel_sell = bcel_rates['rates'].get(currency, {}).get('sell', 'N/A') if bcel_rates else 'N/A'
+                else:
+                    bcel_buy = bcel_rates['rates'].get(currency, {}).get('buy', 'N/A') if bcel_rates else 'N/A'
+                    bcel_sell = bcel_rates['rates'].get(currency, {}).get('sell', 'N/A') if bcel_rates else 'N/A'
+                
+                # LDB 使用對應表獲取正確的貨幣代碼
+                ldb_key = LDB_CURRENCY_MAP.get(currency, currency)
+                ldb_buy = ldb_rates['rates'].get(ldb_key, {}).get('buy', 'N/A') if ldb_rates else 'N/A'
+                ldb_sell = ldb_rates['rates'].get(ldb_key, {}).get('sell', 'N/A') if ldb_rates else 'N/A'
+                
+                print(f"{currency:<8} {bol_buy:>12} {bol_sell:>12} {bcel_buy:>12} {bcel_sell:>12} {ldb_buy:>12} {ldb_sell:>12}")
+            
+            print("-" * 100)
+            
+            # 顯示日期信息
+            if args.date:
+                print(f"查詢日期: {args.date.strftime('%Y-%m-%d')}")
+            if bcel_date:
+                print(f"BCEL 數據日期: {bcel_date.strftime('%Y-%m-%d')}")
+            if bol_date:
+                print(f"BOL 數據日期: {bol_date.strftime('%Y-%m-%d')}")
+            if ldb_date:
+                print(f"LDB 數據日期: {ldb_date.strftime('%Y-%m-%d')}")
+        else:
+            print("無法獲取任何匯率數據")
+            
+    except Exception as e:
+        logging.error(f"程式執行時發生錯誤: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main() 
