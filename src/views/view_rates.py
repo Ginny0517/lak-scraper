@@ -21,9 +21,11 @@ logging.basicConfig(
 def format_rate(currency: str, rate: float) -> str:
     """格式化匯率顯示"""
     if currency in ['USD', 'CNY']:
-        return f"{rate:,.0f}"
-    else:  # THB
-        return f"{rate:.2f}"
+        return f"{rate:,.4f}"  # 保留 4 位小數
+    elif currency == 'VND':
+        return f"{rate:.4f}"   # 保留 4 位小數
+    else:  # THB, EUR 等
+        return f"{rate:.4f}"   # 保留 4 位小數
 
 def view_all_rates(db_path: str = "exchange_rates.db") -> None:
     """View all exchange rate records"""
