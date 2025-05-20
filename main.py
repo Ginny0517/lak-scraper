@@ -11,7 +11,8 @@ import argparse
 # 設置日誌
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,7 @@ def main():
         
         # 顯示匯率比較
         if bcel_rates or bol_rates or ldb_rates or apb_rates or lvb_rates:
-            print("\n匯率比較：")
+            logging.info("\n匯率比較：")
             banks = [
                 ('BOL', bol_rates),
                 ('BCEL', bcel_rates),
@@ -180,11 +181,11 @@ def main():
             col_width = 13
             # 第一行：銀行名稱
             header = f"{'貨幣':<6}" + ''.join(f"{bank:<{col_width*2}}" for bank, _ in banks)
-            print(header)
+            logging.info(header)
             # 第二行：買入/賣出
             sub_header = f"{'':<6}" + ''.join(f"{'Buy':>{col_width}}{'Sell':>{col_width}}" for _ in banks)
-            print(sub_header)
-            print("-" * (6 + col_width * 2 * len(banks)))
+            logging.info(sub_header)
+            logging.info("-" * (6 + col_width * 2 * len(banks)))
             for currency in CURRENCY_LIST:
                 row = f"{currency:<6}"
                 for bank, rates in banks:
@@ -202,23 +203,23 @@ def main():
                         buy = format_rate(rates['rates'].get(currency, {}).get('buy'), currency) if rates else 'N/A'
                         sell = format_rate(rates['rates'].get(currency, {}).get('sell'), currency) if rates else 'N/A'
                     row += f"{buy:>{col_width}}{sell:>{col_width}}"
-                print(row)
-            print("-" * (6 + col_width * 2 * len(banks)))
+                logging.info(row)
+            logging.info("-" * (6 + col_width * 2 * len(banks)))
             # 日期資訊
             if args.date:
-                print(f"查詢日期: {args.date.strftime('%Y-%m-%d')}")
+                logging.info(f"查詢日期: {args.date.strftime('%Y-%m-%d')}")
             if bcel_date:
-                print(f"BCEL 數據日期: {bcel_date.strftime('%Y-%m-%d')}")
+                logging.info(f"BCEL 數據日期: {bcel_date.strftime('%Y-%m-%d')}")
             if bol_date:
-                print(f"BOL 數據日期: {bol_date.strftime('%Y-%m-%d')}")
+                logging.info(f"BOL 數據日期: {bol_date.strftime('%Y-%m-%d')}")
             if ldb_date:
-                print(f"LDB 數據日期: {ldb_date.strftime('%Y-%m-%d')}")
+                logging.info(f"LDB 數據日期: {ldb_date.strftime('%Y-%m-%d')}")
             if apb_date:
-                print(f"APB 數據日期: {apb_date.strftime('%Y-%m-%d')}")
+                logging.info(f"APB 數據日期: {apb_date.strftime('%Y-%m-%d')}")
             if lvb_date:
-                print(f"LVB 數據日期: {lvb_date.strftime('%Y-%m-%d')}")
+                logging.info(f"LVB 數據日期: {lvb_date.strftime('%Y-%m-%d')}")
         else:
-            print("無法獲取任何匯率數據")
+            logging.error("無法獲取任何匯率數據")
             
     except Exception as e:
         logging.error(f"程式執行時發生錯誤: {str(e)}")

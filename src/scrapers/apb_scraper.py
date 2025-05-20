@@ -9,6 +9,8 @@ from urllib3.exceptions import InsecureRequestWarning
 # 禁用SSL警告
 urllib3.disable_warnings(InsecureRequestWarning)
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
 class APBScraper:
     def __init__(self):
         """初始化爬蟲"""
@@ -193,4 +195,4 @@ if __name__ == "__main__":
     rates, date = scraper.fetch_apb_rate()
     
     # 打印結果
-    print(rates, date) 
+    logging.info(rates, date) 

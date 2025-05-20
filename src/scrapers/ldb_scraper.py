@@ -11,6 +11,8 @@ from urllib3.exceptions import InsecureRequestWarning
 # 禁用SSL警告
 urllib3.disable_warnings(InsecureRequestWarning)
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
 class LDBScraper:
     def __init__(self):
         """初始化爬蟲"""
@@ -170,9 +172,6 @@ class LDBScraper:
             return None, None
 
 if __name__ == "__main__":
-    # 設置日誌
-    logging.basicConfig(level=logging.INFO)
-    
     # 創建爬蟲實例
     scraper = LDBScraper()
     
@@ -180,4 +179,4 @@ if __name__ == "__main__":
     rates, date = scraper.fetch_ldb_rate()
     
     # 打印結果
-    print(rates, date) 
+    logging.info(rates, date) 

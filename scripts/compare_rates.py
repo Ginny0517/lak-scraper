@@ -7,7 +7,8 @@ import argparse
 # 配置日誌
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
 
 # 貨幣代碼映射
@@ -65,36 +66,36 @@ def main():
         logging.info(f"BOL匯率獲取結果: {bol_rates}")
         
         if bcel_rates or bol_rates:
-            print("\n匯率比較：")
-            print("----------------------------------------")
-            print(f"{'貨幣':<6} {'BOL匯率':>12} {'BCEL匯率':>12} {'差異':>12} {'差異%':>8}")
-            print("----------------------------------------")
+            logging.info("\n匯率比較：")
+            logging.info("----------------------------------------")
+            logging.info(f"{'貨幣':<6} {'BOL匯率':>12} {'BCEL匯率':>12} {'差異':>12} {'差異%':>8}")
+            logging.info("----------------------------------------")
             
             # 以BCEL幣別為主組合比較表，只比對BOL買入價
             for currency, bcel_rate in bcel_rates.items():
                 bol_rate = bol_rates.get(f"{currency}_buy") if bol_rates else None
                 diff = bcel_rate - bol_rate if bol_rate is not None else None
                 diff_percent = (diff / bol_rate * 100) if bol_rate not in (None, 0) else None
-                print(f"{currency:<6} "
+                logging.info(f"{currency:<6} "
                       f"{format_rate(bol_rate):>12} "
                       f"{format_rate(bcel_rate):>12} "
                       f"{format_difference(diff):>12} "
                       f"{format_percentage(diff_percent):>8}")
-            print("----------------------------------------")
+            logging.info("----------------------------------------")
             
             # 顯示日期信息
             if args.date:
-                print(f"查詢日期: {args.date.strftime('%Y-%m-%d')}")
+                logging.info(f"查詢日期: {args.date.strftime('%Y-%m-%d')}")
             if bcel_date:
-                print(f"BCEL 數據日期: {bcel_date.strftime('%Y-%m-%d')}")
+                logging.info(f"BCEL 數據日期: {bcel_date.strftime('%Y-%m-%d')}")
             if bol_date:
-                print(f"BOL 數據日期: {bol_date.strftime('%Y-%m-%d')}")
+                logging.info(f"BOL 數據日期: {bol_date.strftime('%Y-%m-%d')}")
                 
             # 檢查日期是否一致
             if bcel_date and bol_date and bcel_date.date() != bol_date.date():
-                print(f"注意：BCEL 和 BOL 的數據日期不一致。")
+                logging.warning(f"注意：BCEL 和 BOL 的數據日期不一致。")
         else:
-            print("無法獲取任何匯率數據")
+            logging.error("無法獲取任何匯率數據")
             
     except Exception as e:
         logging.error(f"發生錯誤: {str(e)}")

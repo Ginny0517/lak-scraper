@@ -13,10 +13,7 @@ from typing import Dict, List, Optional
 from tabulate import tabulate
 
 # 配置日誌
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 def format_rate(currency: str, rate: float) -> str:
     """格式化匯率顯示"""
@@ -42,7 +39,7 @@ def view_all_rates(db_path: str = "exchange_rates.db") -> None:
         
         records = cursor.fetchall()
         if not records:
-            print("No exchange rate records found")
+            logging.error("No exchange rate records found")
             return
             
         # Organize data
@@ -59,12 +56,12 @@ def view_all_rates(db_path: str = "exchange_rates.db") -> None:
         
         # Display results
         for date in sorted(rates_by_date.keys(), reverse=True):
-            print(f"\nDate: {date}")
-            print("=" * 80)
+            logging.info(f"\nDate: {date}")
+            logging.info("=" * 80)
             
             for bank in sorted(rates_by_date[date].keys()):
-                print(f"\n{bank} Rates:")
-                print("-" * 80)
+                logging.info(f"\n{bank} Rates:")
+                logging.info("-" * 80)
                 
                 # Prepare table data
                 table_data = []
@@ -77,8 +74,8 @@ def view_all_rates(db_path: str = "exchange_rates.db") -> None:
                     table_data.append([currency, buy_rate, sell_rate])
                 
                 # Display table using tabulate
-                print(tabulate(table_data, headers=headers, tablefmt="grid"))
-                print()
+                logging.info(tabulate(table_data, headers=headers, tablefmt="grid"))
+                logging.info()
             
     except Exception as e:
         logging.error(f"Error viewing exchange rate records: {str(e)}")
@@ -103,7 +100,7 @@ def view_currency_history(currency: str, db_path: str = "exchange_rates.db") -> 
         
         records = cursor.fetchall()
         if not records:
-            print(f"No historical rate records found for {currency}")
+            logging.error(f"No historical rate records found for {currency}")
             return
             
         # Organize data
@@ -117,12 +114,12 @@ def view_currency_history(currency: str, db_path: str = "exchange_rates.db") -> 
             history_by_date[date][bank][rate_type] = rate
         
         # Display results
-        print(f"\n{currency} Historical Rates:")
-        print("=" * 80)
+        logging.info(f"\n{currency} Historical Rates:")
+        logging.info("=" * 80)
         
         for date in sorted(history_by_date.keys(), reverse=True):
-            print(f"\nDate: {date}")
-            print("-" * 80)
+            logging.info(f"\nDate: {date}")
+            logging.info("-" * 80)
             
             # Prepare table data
             table_data = []
@@ -135,8 +132,8 @@ def view_currency_history(currency: str, db_path: str = "exchange_rates.db") -> 
                 table_data.append([bank, buy_rate, sell_rate])
             
             # Display table using tabulate
-            print(tabulate(table_data, headers=headers, tablefmt="grid"))
-            print()
+            logging.info(tabulate(table_data, headers=headers, tablefmt="grid"))
+            logging.info()
             
     except Exception as e:
         logging.error(f"Error viewing currency history: {str(e)}")
@@ -162,7 +159,7 @@ def view_date_rates(date: datetime, db_path: str = "exchange_rates.db") -> None:
         
         records = cursor.fetchall()
         if not records:
-            print(f"No exchange rate records found for {date_str}")
+            logging.error(f"No exchange rate records found for {date_str}")
             return
             
         # Organize data
@@ -176,12 +173,12 @@ def view_date_rates(date: datetime, db_path: str = "exchange_rates.db") -> None:
             rates_by_bank[bank][currency][rate_type] = rate
         
         # Display results
-        print(f"\n{date_str} Exchange Rates:")
-        print("=" * 80)
+        logging.info(f"\n{date_str} Exchange Rates:")
+        logging.info("=" * 80)
         
         for bank in sorted(rates_by_bank.keys()):
-            print(f"\n{bank} Rates:")
-            print("-" * 80)
+            logging.info(f"\n{bank} Rates:")
+            logging.info("-" * 80)
             
             # Prepare table data
             table_data = []
@@ -194,8 +191,8 @@ def view_date_rates(date: datetime, db_path: str = "exchange_rates.db") -> None:
                 table_data.append([currency, buy_rate, sell_rate])
             
             # Display table using tabulate
-            print(tabulate(table_data, headers=headers, tablefmt="grid"))
-            print()
+            logging.info(tabulate(table_data, headers=headers, tablefmt="grid"))
+            logging.info()
             
     except Exception as e:
         logging.error(f"Error viewing date rates: {str(e)}")

@@ -9,6 +9,8 @@ from bs4 import BeautifulSoup
 # 禁用 SSL 警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
 class LVBScraper:
     """LaoVietBank 匯率爬蟲"""
     
@@ -224,19 +226,13 @@ class LVBScraper:
             return None, None
 
 if __name__ == '__main__':
-    # 配置日誌
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-    
     # 測試爬蟲
     scraper = LVBScraper()
     rates, date = scraper.fetch_lvb_rate()
-    print(f"日期: {date}")
-    print("匯率:")
+    logging.info(f"日期: {date}")
+    logging.info("匯率:")
     if rates:
         for currency, rate_data in rates['rates'].items():
-            print(f"{currency}: 買入 {rate_data['buy']}, 賣出 {rate_data['sell']}")
+            logging.info(f"{currency}: 買入 {rate_data['buy']}, 賣出 {rate_data['sell']}")
     else:
-        print("無資料") 
+        logging.error("無資料") 

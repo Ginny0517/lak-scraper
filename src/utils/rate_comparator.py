@@ -1,5 +1,8 @@
 from typing import Dict
 from datetime import datetime
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 class RateComparator:
     def display_comparison(self, rates: Dict[str, Dict[str, float]], date: datetime = None) -> None:
@@ -14,10 +17,10 @@ class RateComparator:
             self.logger.warning("沒有匯率數據可供比較")
             return
             
-        print("\n匯率比較：")
-        print("-" * 40)
-        print(f"{'貨幣':<12} {'BOL匯率':<12} {'BCEL匯率':<12} {'差異':<12} {'差異%':<8}")
-        print("-" * 40)
+        logging.info("\n匯率比較：")
+        logging.info("-" * 40)
+        logging.info(f"{'貨幣':<12} {'BOL匯率':<12} {'BCEL匯率':<12} {'差異':<12} {'差異%':<8}")
+        logging.info("-" * 40)
         
         # 獲取所有貨幣代碼
         currencies = set()
@@ -47,7 +50,7 @@ class RateComparator:
                 diff_str = "N/A"
                 diff_percent_str = "N/A"
                 
-            print(f"{currency}_buy {bol_buy_str:>12} {bcel_buy_str:>12} {diff_str:>12} {diff_percent_str:>8}")
+            logging.info(f"{currency}_buy {bol_buy_str:>12} {bcel_buy_str:>12} {diff_str:>12} {diff_percent_str:>8}")
             
             # 比較賣出價格
             bol_sell = rates.get('BOL', {}).get(f"{currency}_sell")
@@ -66,16 +69,16 @@ class RateComparator:
                 diff_str = "N/A"
                 diff_percent_str = "N/A"
                 
-            print(f"{currency}_sell {bol_sell_str:>12} {bcel_sell_str:>12} {diff_str:>12} {diff_percent_str:>8}")
+            logging.info(f"{currency}_sell {bol_sell_str:>12} {bcel_sell_str:>12} {diff_str:>12} {diff_percent_str:>8}")
         
-        print("-" * 40)
+        logging.info("-" * 40)
         if date:
-            print(f"查詢日期: {date.strftime('%Y-%m-%d')}")
+            logging.info(f"查詢日期: {date.strftime('%Y-%m-%d')}")
             
         # 顯示各銀行的數據日期
         for bank, bank_rates in rates.items():
             if bank_rates and 'date' in bank_rates:
-                print(f"{bank} 數據日期: {bank_rates['date'].strftime('%Y-%m-%d')}")
+                logging.info(f"{bank} 數據日期: {bank_rates['date'].strftime('%Y-%m-%d')}")
 
     def _get_rates_from_scrapers(self, date: datetime = None) -> Dict[str, Dict[str, float]]:
         """

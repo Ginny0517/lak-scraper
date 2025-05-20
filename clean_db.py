@@ -1,11 +1,12 @@
-from db_manager import ExchangeRateDB
+from src.database.db_manager import ExchangeRateDB
 import logging
 import os
 
 # 配置日誌
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
 
 def clean_test_data():
@@ -21,14 +22,14 @@ def clean_test_data():
         deleted_count = db.cursor.rowcount
         db.conn.commit()
         
-        print(f"已刪除 {deleted_count} 條測試數據")
+        logging.info(f"已刪除 {deleted_count} 條測試數據")
         
         # 顯示剩餘的數據
         db.cursor.execute('''
             SELECT COUNT(*) FROM exchange_rates
         ''')
         remaining_count = db.cursor.fetchone()[0]
-        print(f"數據庫中還有 {remaining_count} 條有效數據")
+        logging.info(f"數據庫中還有 {remaining_count} 條有效數據")
         
     finally:
         db.close()
@@ -40,12 +41,12 @@ def rebuild_database():
     # 如果數據庫文件存在，先刪除
     if os.path.exists(db_path):
         os.remove(db_path)
-        print("已刪除舊的數據庫文件")
+        logging.info("已刪除舊的數據庫文件")
     
     # 重新初始化數據庫
     db = ExchangeRateDB()
     try:
-        print("數據庫已重建")
+        logging.info("數據庫已重建")
     finally:
         db.close()
 
