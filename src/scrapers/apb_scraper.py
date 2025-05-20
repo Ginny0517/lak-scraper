@@ -103,7 +103,7 @@ class APBScraper:
         except (ValueError, AttributeError):
             return 0.0
     
-    def fetch_apb_rate(self, date=None):
+    def fetch_rate(self, date=None):
         """
         獲取 APB 匯率
         
@@ -192,7 +192,7 @@ if __name__ == "__main__":
     scraper = APBScraper()
     
     # 獲取匯率
-    rates, date = scraper.fetch_apb_rate()
+    rates, date = scraper.fetch_rate()
     
     # 打印結果
     logging.info(rates, date) 

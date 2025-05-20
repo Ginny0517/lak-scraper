@@ -99,7 +99,7 @@ class LVBScraper:
             if not self._is_holiday(date):
                 return date
             
-    def fetch_lvb_rate(self, date: Optional[datetime.datetime] = None) -> Tuple[Optional[Dict], Optional[datetime.datetime]]:
+    def fetch_rate(self, date: Optional[datetime.datetime] = None) -> Tuple[Optional[Dict], Optional[datetime.datetime]]:
         """獲取 LVB 匯率
         
         Args:
@@ -228,7 +228,7 @@ class LVBScraper:
 if __name__ == '__main__':
     # 測試爬蟲
     scraper = LVBScraper()
-    rates, date = scraper.fetch_lvb_rate()
+    rates, date = scraper.fetch_rate()
     logging.info(f"日期: {date}")
     logging.info("匯率:")
     if rates:

@@ -61,7 +61,7 @@ def fetch_and_save_rates(query_date=None):
         current_date = query_date if query_date else datetime.now()
         
         # 獲取BCEL匯率
-        bcel_rates, bcel_date = bcel_scraper.fetch_bcel_rate(date=current_date)
+        bcel_rates, bcel_date = bcel_scraper.fetch_rate(date=current_date)
         if bcel_rates and bcel_date:
             logger.info(f"成功獲取BCEL匯率: {bcel_rates}")
             
@@ -75,7 +75,7 @@ def fetch_and_save_rates(query_date=None):
             logger.warning("無法獲取BCEL匯率")
         
         # 獲取BOL匯率
-        bol_rates, bol_date = bol_scraper.fetch_bol_rate(date=current_date)
+        bol_rates, bol_date = bol_scraper.fetch_rate(date=current_date)
         if bol_rates and bol_date:
             logger.info(f"成功獲取BOL匯率: {bol_rates}")
             
@@ -89,7 +89,7 @@ def fetch_and_save_rates(query_date=None):
             logger.warning("無法獲取BOL匯率")
         
         # 獲取LDB匯率
-        ldb_rates, ldb_date = ldb_scraper.fetch_ldb_rate(date=current_date)
+        ldb_rates, ldb_date = ldb_scraper.fetch_rate(date=current_date)
         if ldb_rates and ldb_date:
             logger.info(f"成功獲取LDB匯率: {ldb_rates}")
             
@@ -103,7 +103,7 @@ def fetch_and_save_rates(query_date=None):
             logger.warning("無法獲取LDB匯率")
         
         # 獲取APB匯率
-        apb_rates, apb_date = apb_scraper.fetch_apb_rate(date=current_date)
+        apb_rates, apb_date = apb_scraper.fetch_rate(date=current_date)
         if apb_rates and apb_date:
             logger.info(f"成功獲取APB匯率: {apb_rates}")
             
@@ -117,7 +117,7 @@ def fetch_and_save_rates(query_date=None):
             logger.warning("無法獲取APB匯率")
         
         # 獲取LVB匯率
-        lvb_rates, lvb_date = lvb_scraper.fetch_lvb_rate(date=current_date)
+        lvb_rates, lvb_date = lvb_scraper.fetch_rate(date=current_date)
         if lvb_rates and lvb_date:
             logger.info(f"成功獲取LVB匯率: {lvb_rates}")
             for currency, rates in lvb_rates['rates'].items():

@@ -1,116 +1,233 @@
-import requests
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-import logging
+from typing import Dict, Optional, Tuple, List
+from bs4 import BeautifulSoup
 import re
-import time
-from typing import Optional, Dict
-import urllib3
-from urllib3.exceptions import InsecureRequestWarning
+from ..core.base_scraper import BaseScraper
+from ..core.config import HOLIDAYS, BANK_CONFIGS
+import logging
 
-# 禁用SSL警告
-urllib3.disable_warnings(InsecureRequestWarning)
-
-class BOLScraper:
+class BOLScraper(BaseScraper):
+    """寮國央行匯率爬蟲"""
+    
     def __init__(self):
         """初始化爬蟲"""
-        self.base_url = "https://www.bol.gov.la/en/ExchangRate.php"
-        self.min_request_interval = 5  # 最小請求間隔（秒）
-        self.last_request_time = 0
-        self.timeout = 30  # 請求超時時間（秒）
-        self.logger = logging.getLogger(__name__)
-        self.session = requests.Session()
-        self.session.verify = False  # 禁用SSL驗證
-        self.session.headers.update(self._get_random_headers())
+        config = BANK_CONFIGS['BOL']
+        super().__init__(config['base_url'])
+        self.headers = config['headers']
+        # 設置 logger 級別為 DEBUG
+        self.logger.setLevel(logging.DEBUG)
+        # 確保 handler 也設置為 DEBUG
+        for handler in self.logger.handlers:
+            handler.setLevel(logging.DEBUG)
         
-    def _get_random_headers(self) -> Dict[str, str]:
-        """生成隨機請求頭"""
-        return {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Connection': 'keep-alive',
-            'Cache-Control': 'max-age=0',
-            'Referer': 'https://www.bol.gov.la/'
-        }
+    @property
+    def holidays(self) -> List[str]:
+        """獲取假日列表"""
+        return HOLIDAYS
         
-    def _wait_for_next_request(self) -> None:
-        """確保請求間隔"""
-        current_time = time.time()
-        time_since_last_request = current_time - self.last_request_time
-        if time_since_last_request < self.min_request_interval:
-            sleep_time = self.min_request_interval - time_since_last_request
-            time.sleep(sleep_time)
-        self.last_request_time = time.time()
+    def parse(self, raw_data: Dict) -> List[Dict]:
+        """
+        解析原始數據
         
+        Args:
+            raw_data: 原始數據
+            
+        Returns:
+            List[Dict]: 解析後的匯率數據列表
+        """
+        rates = []
+        try:
+            html = raw_data.get('html', '')
+            self.logger.info("開始解析 HTML 響應")
+            self.logger.debug(f"HTML 響應內容: {html[:1000]}...")  # 記錄前 1000 個字符
+            
+            soup = BeautifulSoup(html, 'html.parser')
+            table = soup.find('table')
+            
+            if not table:
+                self.logger.error("未找到匯率表格")
+                return rates
+                
+            tbody = table.find('tbody')
+            if not tbody:
+                self.logger.error("未找到表格主體")
+                return rates
+                
+            rows = tbody.find_all('tr')
+            self.logger.info(f"<tbody> 內找到 {len(rows)} 行")
+            
+            for i, row in enumerate(rows):
+                cols = row.find_all('td')
+                self.logger.debug(f"行 {i} 欄位數: {len(cols)}")
+                if len(cols) < 6:
+                    self.logger.warning(f"行 {i} 欄位數不足，跳過。實際欄位數: {len(cols)}")
+                    continue
+                currency = cols[3].text.strip()
+                buy_rate_text = cols[4].text.strip()
+                sell_rate_text = cols[5].text.strip()
+                # 跳過標題列或空白列
+                if not currency or currency.lower() in ["currency", "currencies"]:
+                    continue
+                buy_rate = self._extract_rate_from_text(buy_rate_text, currency)
+                sell_rate = self._extract_rate_from_text(sell_rate_text, currency)
+                if buy_rate is not None or sell_rate is not None:
+                    rates.append({
+                        'currency': currency,
+                        'buy': buy_rate,
+                        'sell': sell_rate
+                    })
+                    self.logger.debug(f"成功解析匯率: {currency} - 買入: {buy_rate}, 賣出: {sell_rate}")
+            return rates
+        except Exception as e:
+            self.logger.error(f"解析數據時發生錯誤: {str(e)}")
+            return rates
+            
+    def fetch_rate(self, date: Optional[datetime] = None) -> Tuple[Optional[Dict], Optional[datetime]]:
+        """
+        獲取匯率數據
+        
+        Args:
+            date: 要查詢的日期，如果為 None 則獲取當前匯率
+            
+        Returns:
+            Tuple[Optional[Dict], Optional[datetime]]: (匯率數據, 日期) 或 (None, None)
+        """
+        try:
+            # 檢查是否為假日
+            if date and self._is_holiday(date):
+                self.logger.info(f"{date.strftime('%Y-%m-%d')} 是假日，嘗試獲取上一個營業日的匯率")
+                date = self._get_previous_business_day(date)
+                
+            # 準備請求參數
+            files = {}
+            if date:
+                files['date'] = (None, date.strftime('%d-%m-%Y'))
+                
+            # 發送請求
+            response = self.http_client.fetch(
+                endpoint='',
+                method='POST',
+                files=files,
+                headers=self.headers
+            )
+            
+            if not response:
+                self.logger.error("未收到有效的響應")
+                return None, None
+                
+            # 解析匯率數據
+            rates = self.parse({'html': response})
+            if not rates:
+                self.logger.warning("未找到任何匯率資料")
+                return None, None
+                
+            # 構建結果
+            result = {
+                'date': date.strftime('%Y-%m-%d') if date else datetime.now().strftime('%Y-%m-%d'),
+                'rates': {}
+            }
+            
+            for rate in rates:
+                currency = rate['currency']
+                result['rates'][currency] = {
+                    'buy': rate['buy'],
+                    'sell': rate['sell']
+                }
+                
+            return result, date if date else datetime.now()
+            
+        except Exception as e:
+            self.logger.error(f"獲取匯率時發生錯誤: {str(e)}")
+            return None, None
+            
     def _extract_rate_from_text(self, text: str, currency_code: str = None) -> Optional[float]:
-        original_text = text # 保存原始文本以便日誌記錄
+        """
+        從文本中提取匯率
+        
+        Args:
+            text: 匯率文本
+            currency_code: 貨幣代碼
+            
+        Returns:
+            Optional[float]: 解析後的匯率
+        """
+        original_text = text
         self.logger.debug(f"BOL: 原始文本 '{original_text}' (幣種: {currency_code})")
-
+        
         if not isinstance(text, str):
             self.logger.warning(f"BOL: 輸入文本非字串: {original_text}")
             return None
-
+            
         cleaned_text = text.strip()
         if cleaned_text == '-' or not cleaned_text:
             self.logger.warning(f"BOL: 文本為 '-' 或空: {original_text}")
             return None
-
+            
         # BOL 規則: 點是千分位，逗號是小數點
         # 1. 移除所有點 (千分位分隔符)
         text_no_dots = cleaned_text.replace('.', '')
         
         # 2. 將所有逗號替換為點 (小數點)
         standardized_text = text_no_dots.replace(',', '.')
-
-        # 3. 確保移除非數字和非小數點的字符，以防萬一
+        
+        # 3. 確保移除非數字和非小數點的字符
         standardized_text = re.sub(r'[^\d.]', '', standardized_text)
-
+        
         if not standardized_text:
-            self.logger.warning(f"BOL: 標準化後文本為空: {original_text} (處理後: {cleaned_text} -> {text_no_dots} -> {standardized_text})")
+            self.logger.warning(f"BOL: 標準化後文本為空: {original_text}")
             return None
-
+            
         try:
             rate = float(standardized_text)
         except ValueError:
-            self.logger.error(f"BOL: 無法將 '{standardized_text}' (來自 '{original_text}') 轉換為 float.")
+            self.logger.error(f"BOL: 無法將 '{standardized_text}' 轉換為 float")
             return None
-
-        # ---- BOL 特定的調整邏輯 ----
+            
+        # BOL 特定的調整邏輯
         parsed_rate_before_adjustment = rate
         adjustment_applied = False
-
-        # 對於BOL，上述轉換應該能直接得到正確的數值，例如：
-        # "21.510" (USD原始) -> no_dots "21510" -> standardized "21510" -> rate 21510.0
-        # "642,68" (THB原始) -> no_dots "642,68" -> standardized "642.68" -> rate 642.68
-        # "23.456,78" (EUR原始) -> no_dots "23456,78" -> standardized "23456.78" -> rate 23456.78
         
-        # 因此，之前針對USD乘以1000的調整可能不再需要。
-        if currency_code == 'USD':
-            # 檢查一下，如果解析出來的USD仍然異常小，比如小於1000但大於0 (可能是某種未預料的格式)
-            # 這種情況下，我們可能需要更詳細的日誌或特定處理，但暫時不自動調整。
-            if 0 < rate < 1000:
-                self.logger.warning(f"BOL USD: 解析值異常小 '{rate}' (來自 '{original_text}'). 可能需要檢查BOL的USD格式.")
-                # No automatic adjustment for now, to avoid incorrect scaling.
-                pass
-
-        elif currency_code == 'CNY':
-            # BOL的CNY (例如 "2.965" 來自 "2.965" 或 "2.965,00")
-            # 上述解析應該能得到正確的小數 2.965 或 2965.0 (如果原始是 "2.965,00")
-            # 如果解析結果為 2.9xx，則乘以 1000
-            if 0 < rate < 10: 
+        if currency_code == 'CNY':
+            # BOL 的 CNY 匯率 (例如 "2.965" 來自 "2.965" 或 "2.965,00")
+            if 0 < rate < 10:
                 rate *= 1000
                 adjustment_applied = True
-        
-        # KRW 在 BOL 這邊不需要特殊調整單位，假設其直接是 LAK per 1 KRW
-
+                
         if adjustment_applied:
             self.logger.info(f"BOL 特定調整: '{original_text}' (幣種: {currency_code}) -> 初步解析: {parsed_rate_before_adjustment} -> 調整後: {rate}")
         else:
             self.logger.info(f"BOL 解析結果: '{original_text}' (幣種: {currency_code}) -> {rate}")
             
         return rate
+
+    def _get_previous_business_day(self, date: datetime) -> datetime:
+        """
+        獲取上一個營業日
+        
+        Args:
+            date (datetime): 當前日期
             
+        Returns:
+            datetime: 上一個營業日
+        """
+        # 週六和週日不是營業日
+        while True:
+            date = date - timedelta(days=1)
+            if date.weekday() < 5:  # 0-4 是週一到週五
+                return date
+                
+    def _is_holiday(self, date: datetime) -> bool:
+        """
+        檢查日期是否為假日
+        
+        Args:
+            date (datetime): 要檢查的日期
+            
+        Returns:
+            bool: 如果日期為假日則返回 True，否則返回 False
+        """
+        return date.strftime('%Y-%m-%d') in self.holidays
+        
     def _parse_rate_table(self, html_content: str, query_date: datetime = None) -> tuple:
         """
         解析匯率表格
@@ -198,68 +315,4 @@ class BOLScraper:
                 
         except Exception as e:
             self.logger.error(f"BOL: 解析匯率表格時發生嚴重錯誤: {str(e)}")
-            return None, None
-            
-    def _get_previous_business_day(self, date: datetime) -> datetime:
-        """
-        獲取上一個營業日
-        
-        Args:
-            date (datetime): 當前日期
-            
-        Returns:
-            datetime: 上一個營業日
-        """
-        # 週六和週日不是營業日
-        while True:
-            date = date - timedelta(days=1)
-            if date.weekday() < 5:  # 0-4 是週一到週五
-                return date
-                
-    def fetch_bol_rate(self, currency=None, date=None):
-        """
-        獲取寮國央行匯率
-        
-        Args:
-            currency (str, optional): 貨幣代碼，如果為None則返回所有貨幣的匯率
-            date (datetime, optional): 指定查詢日期
-        Returns:
-            tuple: (匯率字典, 日期) 或 (None, None)
-        """
-        try:
-            self._wait_for_next_request()
-            if date:
-                if date.weekday() >= 5:
-                    date = self._get_previous_business_day(date)
-                    self.logger.info(f"查詢日期為非營業日，使用上一個營業日: {date.strftime('%Y-%m-%d')}")
-            params = {}
-            if date:
-                params['date'] = date.strftime('%d-%m-%Y')
-            response = self.session.post(self.base_url, data=params, timeout=self.timeout)
-            response.raise_for_status()
-            flat_rates, parsed_date = self._parse_rate_table(response.text, date)
-            if not flat_rates:
-                self.logger.error("BOL: 沒有解析到任何匯率數據")
-                return None, None
-            rates = {'date': parsed_date.strftime('%Y-%m-%d'), 'rates': {}}
-            for k, v in flat_rates.items():
-                if k.endswith('_buy'):
-                    code = k[:-4]
-                    if code not in rates['rates']:
-                        rates['rates'][code] = {}
-                    rates['rates'][code]['buy'] = v
-                elif k.endswith('_sell'):
-                    code = k[:-5]
-                    if code not in rates['rates']:
-                        rates['rates'][code] = {}
-                    rates['rates'][code]['sell'] = v
-            self.logger.info(f"BOL: 統一格式匯率: {rates}")
-            return rates, parsed_date
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"BOL: 請求失敗: {str(e)}")
-            return None, None
-        except Exception as e:
-            self.logger.error(f"BOL: 發生未預期的錯誤: {str(e)}")
-            import traceback
-            self.logger.error(traceback.format_exc())
             return None, None 
